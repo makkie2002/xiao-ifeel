@@ -66,7 +66,8 @@ sensor:
   - platform: homeassistant
     entity_id: sensor.toon_beneden_temperatuur
     id: room_temp
-    internal: true
+    name: Toon living room
+    internal: false
 
 globals:
   - id: last_ifeel_sent
@@ -273,6 +274,21 @@ button:
             - script.execute:
                 id: send_ifeel_silent
                 temp: !lambda return id(ifeel_temp).state;
+          else:
+            - logger.log: "iFeel is disabled on AC, silent send skipped"
+  - platform: template
+    name: Send Toon temp (silent, no beep)
+    on_press:
+      - if:
+          condition:
+            lambda: return id(ifeel_enabled).state;
+          then:
+            - lambda: |-
+                if (isnan(id(room_temp).state)) {
+                  ESP_LOGW("ifeel", "Toon sensor unavailable, send skipped");
+                } else {
+                  id(send_ifeel_silent).execute(id(room_temp).state);
+                }
           else:
             - logger.log: "iFeel is disabled on AC, silent send skipped"
   - platform: template
