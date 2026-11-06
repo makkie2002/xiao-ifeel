@@ -138,18 +138,22 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
-      - script.execute: id: apply_current_state
+      - script.execute:
+          id: apply_current_state
     turn_off_action:
-      - script.execute: id: apply_current_state
+      - script.execute:
+          id: apply_current_state
   - platform: template
     name: AC quiet
     id: ac_quiet
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
-      - script.execute: id: apply_current_state
+      - script.execute:
+          id: apply_current_state
     turn_off_action:
-      - script.execute: id: apply_current_state
+      - script.execute:
+          id: apply_current_state
 
 script:
   - id: electra_tx
