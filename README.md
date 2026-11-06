@@ -66,6 +66,9 @@ wifi_password: "YourPassword"
   bit 3 in the stateful frame. Flipping it re-sends the full state
   with current power (tracked from AC ON/OFF); before the first
   ON/OFF press it only arms the flag. Silent sends pause while off.
+- Switch `AC quiet` (restored on boot, default ON to match the
+  remote's own frames) — byte 5 bit 7. Same apply-on-flip behavior.
+  (Turbo is byte 5 bit 6 — say the word if you want a switch for it.)
 - Number `iFeel sensor temperature` + Button `Send sensor temp` —
   manual silent update. `room_temp` (Toon sensor) auto-sends every
   5 min when the rounded value changes.

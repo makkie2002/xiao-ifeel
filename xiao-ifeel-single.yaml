@@ -138,19 +138,18 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
-      - lambda: |-
-          if (id(last_power) < 0) {
-            ESP_LOGI("ifeel", "iFeel ON armed, applies on next AC ON/OFF");
-            return;
-          }
-          id(send_ac_state).execute(id(last_power));
+      - script.execute: id: apply_current_state
     turn_off_action:
-      - lambda: |-
-          if (id(last_power) < 0) {
-            ESP_LOGI("ifeel", "iFeel OFF armed, applies on next AC ON/OFF");
-            return;
-          }
-          id(send_ac_state).execute(id(last_power));
+      - script.execute: id: apply_current_state
+  - platform: template
+    name: AC quiet
+    id: ac_quiet
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - script.execute: id: apply_current_state
+    turn_off_action:
+      - script.execute: id: apply_current_state
 
 script:
   - id: electra_tx
@@ -199,6 +198,14 @@ script:
                      state[5], state[6], state[7], state[8], state[9],
                      state[10], state[11], state[12]);
             return raw;
+  - id: apply_current_state
+    then:
+      - lambda: |-
+          if (id(last_power) < 0) {
+            ESP_LOGI("ifeel", "state change armed, applies on next AC ON/OFF");
+          } else {
+            id(send_ac_state).execute(id(last_power));
+          }
   - id: send_ifeel_silent
     parameters:
       temp: float
@@ -240,12 +247,14 @@ script:
           else fan = 5;
           bool ifeel = id(ifeel_enabled).state;
           uint8_t b6 = (uint8_t)((mode << 5) | (ifeel ? 0x08 : 0x00));
+          bool quiet = id(ac_quiet).state;
+          uint8_t b5 = quiet ? 0x80 : 0x00;
           uint8_t sens;
           if (!isnan(id(room_temp).state)) sens = (uint8_t)(id(room_temp).state + 0.5f);
           else sens = (uint8_t)ip;
           if (sens > 50) sens = 50;
           uint8_t b9 = power ? 0x30 : 0x10;
-          id(electra_tx).execute(0xC3, b1, 0xE0, b3, (uint8_t)(fan << 5), 0x80,
+          id(electra_tx).execute(0xC3, b1, 0xE0, b3, (uint8_t)(fan << 5), b5,
                                  b6, (uint8_t)(sens + 0x4A),
                                  0x00, b9, 0x00, 0x00);
 
