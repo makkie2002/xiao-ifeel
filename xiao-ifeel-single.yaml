@@ -29,7 +29,6 @@ remote_receiver:
     number: GPIO4
     inverted: true
   tolerance: 55%
-  dump: all
   on_raw:
     - lambda: |-
         // ELECTRA_AC sniffer: hdr ~9166/~4470, bit ~646, one ~1647, zero ~547, LSB-first, 13 bytes
@@ -169,9 +168,11 @@ script:
     then:
       - lambda: |-
           // Silent iFeel sensor update: integer degrees only (byte7, no half-bit).
+          // Template cloned from real YKR-L/101E silent frame 2026-11-06
+          // (C3 8F E0 40 60 80 88 61 00 30 00 1E 89 = sensor 23C).
           uint8_t sensor = (uint8_t)(temp + 0.5f);
           if (sensor > 50) sensor = 50;
-          id(electra_tx).execute(0xC3, 0x5F, 0xE0, 0x40, 0x60, 0x00,
+          id(electra_tx).execute(0xC3, 0x8F, 0xE0, 0x40, 0x60, 0x80,
                                  0x88, sensor + 0x4A, 0x00, 0x30, 0x00, 0x1E);
   - id: send_ac_state
     parameters:

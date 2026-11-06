@@ -39,8 +39,9 @@ wifi_password: "YourPassword"
 
 ## Protocol notes (verified by capture 2026-11-06, YKR-L/101E)
 
-- Silent sensor update (104 bit, LSB-first per byte):
-  `C3 5F E0 40 60 00 88 [sensor+0x4A] 00 30 00 1E [sum&0xFF]`
+- Silent sensor update (104 bit, LSB-first per byte), template cloned
+  from a real YKR-L/101E silent frame:
+  `C3 8F E0 40 60 80 88 [sensor+0x4A] 00 30 00 1E [sum&0xFF]`
   Sensor value is **integer degrees only** (byte 7, no half-bit).
 - Full-state setpoint **does 0.5 °C**: Temp field (byte 1, bits 3–7)
   holds `int_part − 8`, and **byte 3 bit 7 (`0x80`) = +0.5 °C**.
