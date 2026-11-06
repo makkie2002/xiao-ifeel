@@ -62,6 +62,10 @@ wifi_password: "YourPassword"
 - Number `AC setpoint` (16–30, 0.5 step) + Selects `AC mode` /
   `AC fan` + Buttons `AC ON (apply mode + setpoint)` / `AC OFF` —
   full-state commands with .5 °C support (swing fixed off).
+- Switch `iFeel enabled` (restored on boot, default ON) — byte 6
+  bit 3 in the stateful frame. Flipping it re-sends the full state
+  with current power (tracked from AC ON/OFF); before the first
+  ON/OFF press it only arms the flag. Silent sends pause while off.
 - Number `iFeel sensor temperature` + Button `Send sensor temp` —
   manual silent update. `room_temp` (Toon sensor) auto-sends every
   5 min when the rounded value changes.
