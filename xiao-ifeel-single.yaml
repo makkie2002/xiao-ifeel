@@ -23,6 +23,17 @@ remote_transmitter:
   pin: GPIO3
   carrier_duty_percent: 50%
 
+sensor:
+  - platform: homeassistant
+    entity_id: sensor.toon_beneden_temperatuur
+    id: room_temp
+    internal: true
+
+globals:
+  - id: last_ifeel_sent
+    type: float
+    initial_value: "-100.0"
+
 number:
   - platform: template
     name: iFeel sensor temperature
@@ -34,17 +45,18 @@ number:
     optimistic: true
     unit_of_measurement: °C
 
-button:
-  - platform: template
-    name: Send sensor temp (silent, no beep)
-    on_press:
+script:
+  - id: send_ifeel_silent
+    parameters:
+      temp: float
+    then:
       - remote_transmitter.transmit_raw:
           carrier_frequency: 38kHz
           code: !lambda |-
             // ELECTRA_AC silent sensor update (AUX/YKR-L iFeel)
             // Template from IRremoteESP8266 dumps, only byte7 + checksum change.
             // Timings: hdr 9166/4470, bit 646, one 1647, zero 547, LSB-first.
-            uint8_t sensor = (uint8_t)id(ifeel_temp).state;
+            uint8_t sensor = (uint8_t)temp;
             if (sensor > 50) sensor = 50;
             uint8_t state[13] = {0xC3, 0x5F, 0xE0, 0x40, 0x60, 0x00,
                                  0x88, (uint8_t)(sensor + 0x4A), 0x00,
@@ -71,3 +83,27 @@ button:
                      state[5], state[6], state[7], state[8], state[9],
                      state[10], state[11], state[12]);
             return raw;
+
+button:
+  - platform: template
+    name: Send sensor temp (silent, no beep)
+    on_press:
+      - script.execute:
+          id: send_ifeel_silent
+          temp: !lambda return id(ifeel_temp).state;
+
+interval:
+  - interval: 5min
+    then:
+      - lambda: |-
+          if (isnan(id(room_temp).state)) {
+            ESP_LOGW("ifeel", "room sensor unavailable, skipping auto-send");
+            return;
+          }
+          float t = id(room_temp).state;
+          if (fabs(t - id(last_ifeel_sent)) < 0.5 && id(last_ifeel_sent) > -99.0) {
+            ESP_LOGI("ifeel", "room %.1fC unchanged, skipping", t);
+            return;
+          }
+          id(last_ifeel_sent) = t;
+          id(send_ifeel_silent).execute(t);
