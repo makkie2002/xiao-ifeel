@@ -23,6 +23,14 @@ remote_transmitter:
   pin: GPIO3
   carrier_duty_percent: 50%
 
+remote_receiver:
+  id: rcvr
+  pin:
+    number: GPIO4
+    inverted: true
+  tolerance: 55%
+  dump: all
+
 sensor:
   - platform: homeassistant
     entity_id: sensor.toon_beneden_temperatuur
