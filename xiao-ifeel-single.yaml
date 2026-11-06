@@ -83,23 +83,64 @@ number:
     initial_value: 24
     optimistic: true
     unit_of_measurement: °C
+  - platform: template
+    name: AC setpoint
+    id: setpoint_temp
+    min_value: 16
+    max_value: 30
+    step: 0.5
+    initial_value: 21.5
+    optimistic: true
+    unit_of_measurement: °C
+
+select:
+  - platform: template
+    name: AC mode
+    id: ac_mode
+    options:
+      - Heat
+      - Cool
+      - Dry
+      - Auto
+      - Fan
+    initial_option: Heat
+    optimistic: true
+  - platform: template
+    name: AC fan
+    id: ac_fan
+    options:
+      - Auto
+      - Low
+      - Medium
+      - High
+    initial_option: Auto
+    optimistic: true
 
 script:
-  - id: send_ifeel_silent
+  - id: electra_tx
     parameters:
-      temp: float
+      b0: int
+      b1: int
+      b2: int
+      b3: int
+      b4: int
+      b5: int
+      b6: int
+      b7: int
+      b8: int
+      b9: int
+      b10: int
+      b11: int
     then:
       - remote_transmitter.transmit_raw:
           carrier_frequency: 38kHz
           code: !lambda |-
-            // ELECTRA_AC silent sensor update (AUX/YKR-L iFeel)
-            // Template from IRremoteESP8266 dumps, only byte7 + checksum change.
-            // Timings: hdr 9166/4470, bit 646, one 1647, zero 547, LSB-first.
-            uint8_t sensor = (uint8_t)temp;
-            if (sensor > 50) sensor = 50;
-            uint8_t state[13] = {0xC3, 0x5F, 0xE0, 0x40, 0x60, 0x00,
-                                 0x88, (uint8_t)(sensor + 0x4A), 0x00,
-                                 0x30, 0x00, 0x1E, 0x00};
+            // ELECTRA_AC 13-byte frame, LSB-first per byte.
+            // hdr 9166/4470, bit 646, one 1647, zero 547.
+            uint8_t state[13] = {(uint8_t)b0, (uint8_t)b1, (uint8_t)b2,
+                                 (uint8_t)b3, (uint8_t)b4, (uint8_t)b5,
+                                 (uint8_t)b6, (uint8_t)b7, (uint8_t)b8,
+                                 (uint8_t)b9, (uint8_t)b10, (uint8_t)b11, 0};
             uint16_t sum = 0;
             for (int i = 0; i < 12; i++) sum += state[i];
             state[12] = (uint8_t)(sum & 0xFF);
@@ -108,20 +149,65 @@ script:
             raw.push_back(9166);
             raw.push_back(-4470);
             for (int i = 0; i < 13; i++) {
-              uint8_t b = state[i];
+              uint8_t v = state[i];
               for (int j = 0; j < 8; j++) {
                 raw.push_back(646);
-                raw.push_back((b & 1) ? -1647 : -547);
-                b >>= 1;
+                raw.push_back((v & 1) ? -1647 : -547);
+                v >>= 1;
               }
             }
             raw.push_back(646);
             raw.push_back(-20000);
-            ESP_LOGI("ifeel", "sensor %dC -> %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-                     sensor, state[0], state[1], state[2], state[3], state[4],
+            ESP_LOGI("ifeel", "TX %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                     state[0], state[1], state[2], state[3], state[4],
                      state[5], state[6], state[7], state[8], state[9],
                      state[10], state[11], state[12]);
             return raw;
+  - id: send_ifeel_silent
+    parameters:
+      temp: float
+    then:
+      - lambda: |-
+          // Silent iFeel sensor update: integer degrees only (byte7, no half-bit).
+          uint8_t sensor = (uint8_t)(temp + 0.5f);
+          if (sensor > 50) sensor = 50;
+          id(electra_tx).execute(0xC3, 0x5F, 0xE0, 0x40, 0x60, 0x00,
+                                 0x88, sensor + 0x4A, 0x00, 0x30, 0x00, 0x1E);
+  - id: send_ac_state
+    parameters:
+      power: int
+    then:
+      - lambda: |-
+          // Full-state command cloned from YKR-L/101E captures (Heat/FanLow/SwingOff baseline).
+          // Setpoint: Temp field = int part - 8, byte3 bit7 (0x80) = +0.5C (found by capture 2026-11-06).
+          float t = roundf(id(setpoint_temp).state * 2.0f) / 2.0f;
+          if (t < 16.0f) t = 16.0f;
+          if (t > 30.0f) t = 30.0f;
+          int ip = (int)t;
+          bool half = (t - ip) >= 0.5f;
+          uint8_t b1 = (uint8_t)(((ip - 8) << 3) | 0x07);
+          uint8_t b3 = half ? 0x80 : 0x00;
+          std::string m = id(ac_mode).state;
+          uint8_t mode = 4;
+          if (m == "Cool") mode = 1;
+          else if (m == "Dry") mode = 2;
+          else if (m == "Heat") mode = 4;
+          else if (m == "Fan") mode = 6;
+          else mode = 0;
+          std::string f = id(ac_fan).state;
+          uint8_t fan = 5;
+          if (f == "Low") fan = 3;
+          else if (f == "Medium") fan = 2;
+          else if (f == "High") fan = 1;
+          else fan = 5;
+          uint8_t sens;
+          if (!isnan(id(room_temp).state)) sens = (uint8_t)(id(room_temp).state + 0.5f);
+          else sens = (uint8_t)ip;
+          if (sens > 50) sens = 50;
+          uint8_t b9 = power ? 0x30 : 0x10;
+          id(electra_tx).execute(0xC3, b1, 0xE0, b3, (uint8_t)(fan << 5), 0x80,
+                                 (uint8_t)((mode << 5) | 0x08), (uint8_t)(sens + 0x4A),
+                                 0x00, b9, 0x00, 0x00);
 
 button:
   - platform: template
@@ -130,6 +216,18 @@ button:
       - script.execute:
           id: send_ifeel_silent
           temp: !lambda return id(ifeel_temp).state;
+  - platform: template
+    name: AC ON (apply mode + setpoint)
+    on_press:
+      - script.execute:
+          id: send_ac_state
+          power: 1
+  - platform: template
+    name: AC OFF
+    on_press:
+      - script.execute:
+          id: send_ac_state
+          power: 0
 
 interval:
   - interval: 5min
